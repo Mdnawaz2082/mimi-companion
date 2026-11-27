@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#17152b">
+<title>M.I.M.I. Companion</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#17152b;color:#fff;font-family:Arial,sans-serif;padding:22px}
+main{max-width:480px;margin:auto}
+h1{text-align:center;color:#d9b8ff;margin-bottom:4px}
+.sub{text-align:center;color:#aaa;margin-top:0}
+.card{background:#25223d;border-radius:18px;padding:18px;margin:16px 0}
+.status{text-align:center;color:#ffca80;font-size:14px}
+button{border:0;border-radius:12px;padding:15px 12px;background:#a982ef;color:#17152b;font-weight:bold;font-size:15px;width:100%;margin:6px 0}
+button.secondary{background:#393451;color:white}
+button.stop{background:#e78a9b}
+button:disabled{opacity:.4}
+input{width:100%;padding:14px;border-radius:10px;border:0;font-size:16px;margin:8px 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#messages{height:220px;overflow:auto;background:#17152b;border-radius:10px;padding:12px;font-size:14px;white-space:pre-wrap}
+.robot{text-align:center;font-size:64px;margin:12px}
+small{color:#aaa}
+</style>
+</head>
+<body>
+<main>
+<h1>M.I.M.I.</h1>
+<p class="sub">My Interactive Mini Intelligence</p>
+<div class="robot">🤖</div>
+
+<div class="card">
+<p class="status" id="status">● Disconnected</p>
+<button id="connect">Connect to M.I.M.I.</button>
+<button class="secondary" id="disconnect">Disconnect</button>
+</div>
+
+<div class="card">
+<h3>Talk to M.I.M.I.</h3>
+<button id="listen" disabled>🎤 Start Listening</button>
+<input id="question" placeholder="Type your question...">
+<button id="ask" disabled>Send Question</button>
+</div>
+
+<div class="card">
+<h3>Local Audio</h3>
+<div class="grid">
+<button class="secondary audio" data-command="PLAY PRAYER" disabled>🙏 Prayer</button>
+<button class="secondary audio" data-command="PLAY QURAN" disabled>📖 Quran</button>
+<button class="secondary audio" data-command="PLAY NASHEED" disabled>🎵 Nasheed</button>
+<button class="stop" id="stop" disabled>⏹ Stop</button>
+</div>
+</div>
+
+<div class="card">
+<h3>Conversation</h3>
+<div id="messages">Hello! I'm M.I.M.I. Connect to your robot to begin.</div>
+</div>
+<small>Bluetooth requires Android Chrome and an HTTPS connection.</small>
+</main>
+
+<script>
+const SERVICE = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+const RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+const TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+
+let device, server, tx, rx;
+
+const status = document.getElementById("status");
+const messages = document.getElementById("messages");
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+function log(message) {
+  messages.textContent += "\n" + message;
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function setConnected(connected) {
+  status.textContent = connected ? "● Connected to M.I.M.I." : "● Disconnected";
+  status.style.color = connected ? "#8df0b0" : "#ffca80";
+  document.querySelectorAll("button").forEach(b => {
+    if (b.id !== "connect" && b.id !== "disconnect") b.disabled = !connected;
+  });
+  document.getElementById("connect").disabled = connected;
+}
+
+async function connect() {
+  try {
+    if (!navigator.bluetooth) {
+      throw new Error("Bluetooth is unavailable. Open this page in Android Chrome over HTTPS.");
+    }
+
+    status.textContent = "Searching for M.I.M.I....";
+
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ name: "M.I.M.I." }],
+      optionalServices: [SERVICE]
+    });
+
+    device.addEventListener("gattserverdisconnected", () => {
+      setConnected(false);
+      log("M.I.M.I. disconnected.");
+    });
+
+    server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE);
+    rx = await service.getCharacteristic(RX);
+    tx = await service.getCharacteristic(TX);
+
+    await tx.startNotifications();
+    tx.addEventListener("characteristicvaluechanged", event => {
+      const message = decoder.decode(event.target.value);
+      log(message);
+    });
+
+    setConnected(true);
+    log("Connected successfully!");
+  } catch (error) {
+    status.textContent = "Connection failed: " + error.message;
+    log("Error: " + error.message);
+  }
+}
+
+async function send(command) {
+  if (!rx) return;
+  try {
+    const data = encoder.encode(command);
+    if (rx.properties.writeWithoutResponse) {
+      await rx.writeValueWithoutResponse(data);
+    } else {
+      await rx.writeValueWithResponse(data);
+    }
+    log("APP: " + command);
+  } catch (error) {
+    log("Send error: " + error.message);
+  }
+}
+
+document.getElementById("connect").onclick = connect;
+
+document.getElementById("disconnect").onclick = () => {
+  if (device && device.gatt.connected) device.gatt.disconnect();
+  setConnected(false);
+};
+
+document.getElementById("listen").onclick = () => send("LISTEN");
+
+document.getElementById("ask").onclick = () => {
+  const q = document.getElementById("question").value.trim();
+  if (q) {
+    send("ASK:" + q);
+    document.getElementById("question").value = "";
+  }
+};
+
+document.querySelectorAll(".audio").forEach(button => {
+  button.onclick = () => send(button.dataset.command);
+});
+
+document.getElementById("stop").onclick = () => send("STOP");
+
+setConnected(false);
+</script>
+</body>
+</html>
