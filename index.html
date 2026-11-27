@@ -95,8 +95,8 @@ async function connect() {
     status.textContent = "Searching for M.I.M.I....";
 
     device = await navigator.bluetooth.requestDevice({
-      filters: [{ name: "M.I.M.I." }],
-      optionalServices: [SERVICE]
+       acceptAllDevices: true,
+       optionalServices: [SERVICE]
     });
 
     device.addEventListener("gattserverdisconnected", () => {
